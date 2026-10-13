@@ -7,21 +7,21 @@ Họ tên: Chung
 |---|---|---|---|---|---|---|---|---|---|---|
 | E0 | zero-shot | 0 | 7.85 | 4.20 | 0.0711 | [0.0471, 0.0989] | 1.09 | 0.1517 | 0.0144 | 0.1479 |
 | E1 | LoRA LLM | 33,030,144 | 8.92 | 41.72 | 0.2605 | [0.2243, 0.2990] | 1.26 | 0.1759 | 0.1889 | 0.5097 |
-| E2 | + projector | 87,609,344 | [Đang cập nhật e2.json] | [Đang cập nhật] | [Đang cập nhật] | [Đang cập nhật] | [Đang cập nhật] | [Đang cập nhật] | [Đang cập nhật] | [Đang cập nhật] |
-| E3 | + LoRA ViT | 100,205,568 | [Đang cập nhật e3.json] | [Đang cập nhật] | [Đang cập nhật] | [Đang cập nhật] | [Đang cập nhật] | [Đang cập nhật] | [Đang cập nhật] | [Đang cập nhật] |
-| E4 | LoRA rank r=4 | 62,836,736 | [Đang cập nhật e4_rank_4.json] | [Đang cập nhật] | [Đang cập nhật] | [Đang cập nhật] | [Đang cập nhật] | [Đang cập nhật] | [Đang cập nhật] | [Đang cập nhật] |
+| E2 | + projector | 142,135,296 | 8.46 | 41.28 | 0.3414 | [0.3030, 0.3820] | 1.22 | 0.2266 | 0.2684 | 0.6115 |
+| E3 | + LoRA ViT | 148,426,752 | [Đang cập nhật e3.json] | [Đang cập nhật] | [Đang cập nhật] | [Đang cập nhật] | [Đang cập nhật] | [Đang cập nhật] | [Đang cập nhật] | [Đang cập nhật] |
+| E4 | LoRA rank r=4 | 117,362,688 | [Đang cập nhật e4_rank_4.json] | [Đang cập nhật] | [Đang cập nhật] | [Đang cập nhật] | [Đang cập nhật] | [Đang cập nhật] | [Đang cập nhật] | [Đang cập nhật] |
 
 ## 10 câu hỏi (trả lời bằng **số của bạn**, không chép lại tài liệu)
 
 ### Câu 1 — Kiến trúc: ViT, projector và LLM của Qwen3-VL-4B có bao nhiêu tham số mỗi khối, và E1/E2/E3 mỗi cái cập nhật khối nào?
 - **Phân bổ tham số kiến trúc Qwen3-VL-4B**:
   - **Vision Transformer (ViT)**: Gồm 24 khối transformer (`depth=24`), kích thước ẩn `hidden_size=1024`, `intermediate_size=4096`, 16 attention heads. Tổng số tham số của ViT xấp xỉ **303M tham số** (bao gồm patch embedding $16 \times 16 \times 3$, positional embeddings và 24 transformer blocks).
-  - **Projector**: Gồm bộ gộp không gian chính (`visual.merger`) và 3 bộ gộp đa tỉ lệ tại các tầng trung gian 5, 11, 17 (`visual.deepstack_merger_list`). Projector làm nhiệm vụ ánh xạ từ đặc trưng 4 patch gộp ($4 \times 1024 = 4096$) sang không gian embedding của LLM ($2560$). Tổng cộng có 24 tensors với **54,579,200 tham số** (~54.6M tham số).
+  - **Projector**: Gồm bộ gộp không gian chính (`visual.merger`) và 3 bộ gộp đa tỉ lệ tại các tầng trung gian 5, 11, 17 (`visual.deepstack_merger_list`). Projector làm nhiệm vụ ánh xạ từ đặc trưng 4 patch gộp ($4 \times 1024 = 4096$) sang không gian embedding của LLM ($2560$). Tổng cộng có 24 tensors với **109,105,152 tham số** (~109.1M tham số).
   - **Language Model (LLM)**: Gồm 36 tầng giải mã Causal LM (`num_hidden_layers=36`), `hidden_size=2560`, `intermediate_size=9728`, cơ chế Grouped-Query Attention (32 query heads, 8 KV heads), từ điển `vocab_size=151936` (buộc chia sẻ trọng số embedding). Tổng số tham số LLM xấp xỉ **3.65B tham số**.
 - **Khối được cập nhật trong từng setup**:
   - **E1 (LoRA LLM)**: Đóng băng hoàn toàn ViT và Projector. Gắn LoRA ($r=16, \alpha=32$) vào 252 module chiếu tuyến tính của LLM (36 layers $\times$ 7 projections: `q_proj, k_proj, v_proj, o_proj, gate_proj, up_proj, down_proj`). Cập nhật **33,030,144 tham số** (~0.8% mô hình).
-  - **E2 (+ Projector)**: Giữ nguyên LoRA LLM của E1 (33.03M) và mở khoá toàn bộ trọng số Projector (`visual.merger` và `visual.deepstack_merger_list`, 54,579,200 tham số) đưa về `float32`. Tổng tham số huấn luyện là **87,609,344 tham số** (~3.58% mô hình).
-  - **E3 (+ LoRA ViT)**: Giữ nguyên toàn bộ cấu hình E2 và gắn thêm LoRA ($r=16, \alpha=32$) vào 96 module của ViT (24 blocks $\times$ 4 projections: `attn.qkv`, `attn.proj`, `mlp.linear_fc1`, `mlp.linear_fc2`). Tổng cộng 348 module LoRA + toàn bộ Projector, cập nhật **100,205,568 tham số** (~4.09% mô hình).
+  - **E2 (+ Projector)**: Giữ nguyên LoRA LLM của E1 (33.03M) và mở khoá toàn bộ trọng số Projector (`visual.merger` và `visual.deepstack_merger_list`, 109,105,152 tham số) đưa về `float32`. Tổng tham số huấn luyện là **142,135,296 tham số** (~5.36% mô hình).
+  - **E3 (+ LoRA ViT)**: Giữ nguyên toàn bộ cấu hình E2 và gắn thêm LoRA ($r=16, \alpha=32$) vào 96 module của ViT (24 blocks $\times$ 4 projections: `attn.qkv`, `attn.proj`, `mlp.linear_fc1`, `mlp.linear_fc2`, bổ sung 6,291,456 tham số). Tổng cộng 348 module LoRA + toàn bộ Projector, cập nhật **148,426,752 tham số** (~5.59% mô hình).
 
 ### Câu 2 — E0: `parse_valid_rate` bằng bao nhiêu, và hai lỗi phổ biến nhất của model gốc là gì (kèm một ví dụ output thô)?
 - **Chỉ số E0 từ `report/evidence/e0.json`**:
@@ -81,10 +81,10 @@ Họ tên: Chung
 ### Câu 7 — So sánh E1/E2/E3: mở projector và LoRA trên ViT có đáng không (F1, CI95, VRAM, thời gian)?
 - **So sánh định lượng giữa các cấu hình**:
   - **E1 (Chỉ LoRA LLM)**: Đạt F1 micro **0.2605** [0.2243, 0.2990], VRAM đỉnh **8.92 GB**, thời gian train **41.72 phút** với 33.03M tham số trainable. Khả năng parse đạt tới 99.04%.
-  - **E2 (+ Toàn bộ Projector)**: Mở thêm 54.58M tham số Projector đưa tổng tham số lên 87.61M. Việc mở Projector giúp tinh chỉnh trực tiếp ma trận ánh xạ không gian thị giác sang ngôn ngữ, mang lại độ phân giải toạ độ tốt hơn cho các box phức tạp.
-  - **E3 (+ LoRA ViT)**: Bổ sung 96 module LoRA trên ViT (tổng 100.21M tham số). Giúp đặc trưng trích xuất từ ảnh được điều chỉnh thích ứng với bài toán hư hại mặt đường thay vì chỉ dựa vào pre-trained ViT tổng quát.
+  - **E2 (+ Toàn bộ Projector)**: Mở thêm 109.11M tham số Projector đưa tổng tham số lên 142.14M. Đạt F1 micro **0.3414** [0.3030, 0.3820], tăng vọt **+8.09%** so với E1 (0.2605), tỷ lệ parse valid đạt 100.0%. VRAM đỉnh 8.46 GB, thời gian train 41.28 phút.
+  - **E3 (+ LoRA ViT)**: Bổ sung 96 module LoRA trên ViT (tổng 148.43M tham số). Giúp đặc trưng trích xuất từ ảnh được điều chỉnh thích ứng với bài toán hư hại mặt đường thay vì chỉ dựa vào pre-trained ViT tổng quát.
 - **Đánh giá tính đánh đổi (Trade-off Analysis)**:
-  - Nếu khoảng tin cậy 95% của E2/E3 chồng lấn với E1 trên tập test 311 ảnh, mức tăng F1 có thể không có ý nghĩa thống kê áp đảo nhưng chất lượng toạ độ chi tiết (`mean_iou`) được cải thiện rõ rệt. Xét về chi phí tài nguyên, E1 là cấu hình kinh tế nhất (VRAM thấp nhất, thời gian nhanh nhất), trong khi E2 cung cấp điểm cân bằng lý tưởng nhất khi cải thiện khả năng căn chỉnh đa phương thức mà không làm tăng đáng kể thời gian lan truyền ngược qua 24 tầng ViT.
+  - So sánh E1 và E2: Khoảng tin cậy của E2 [0.303, 0.382] cao hơn hẳn và gần như tách biệt hoàn toàn so với khoảng tin cậy của E1 [0.224, 0.299]. Mức tăng F1 +8.09% có ý nghĩa thống kê rõ rệt. Đáng chú ý, VRAM đỉnh của E2 (8.46 GB) rất tối ưu và thời gian train (41.28 phút) tương đương E1, khẳng định việc mở toàn bộ Projector là một cải tiến có giá trị thực chiến cực cao.
 
 ### Câu 8 — Tập test có 311 ảnh: khoảng tin cậy rộng thế nào, và điều đó giới hạn kết luận so sánh các setup ra sao?
 - **Độ rộng khoảng tin cậy bootstrap CI95**:
