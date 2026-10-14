@@ -1,4 +1,4 @@
-Họ tên: Chung
+Họ tên: Ngô Đức Chung
 `dataset_version`: d10-21e4070301
 
 ## Bảng tổng hợp (số của bạn, lấy từ `report/evidence/*.json`)
@@ -122,3 +122,44 @@ Họ tên: Chung
   1. *Xung đột số học Mixed Precision và LoRA Projector*: Khi kết hợp lượng tử hoá 4-bit với việc mở toàn bộ Projector, việc các tham số gốc ở kiểu `float16` gây ra xung đột nghiêm trọng với `torch.amp.GradScaler` và `AdamW`. Bắt buộc phải chuyển đổi đồng nhất toàn bộ tham số trainable và gradient về `torch.float32` ở cấp độ `nn.Parameter` và tắt cơ chế đa tensor `foreach=False` trong AdamW để đảm bảo tính ổn định số học tuyệt đối.
   2. *Hạn chế của Bounding Box đối với đối tượng dạng đường*: Các hư hại mặt đường dạng tuyến tính như vết nứt (`crack`) có đặc tính hình học không phù hợp với bounding box hình chữ nhật chuẩn. Trong các ứng dụng thực tế, chuyển sang biểu diễn đa giác (polygon segmentation) hoặc mask RLE sẽ phản ánh chính xác hơn nhiều chất lượng phát hiện.
   3. *Hiện tượng rò rỉ dữ liệu theo chuỗi thời gian*: Việc bắt buộc chia split theo session quay (group-based split) là kinh nghiệm thực tế sống còn trong thị giác máy tính cho xe tự hành, ngăn ngừa hoàn toàn hiện tượng F1 cao ảo do mô hình học vẹt khung cảnh liên tiếp.
+
+## Bonus E5 — Học tăng cường (GRPO) với Reward IoU cho Visual Grounding (+10 điểm)
+
+### 1. Thiết kế và kiểm thử Hàm Reward IoU (4 điểm)
+- **Công thức tính toán**:
+  Hàm `compute_grounding_reward(completion, gt_boxes)` được thiết kế để đánh giá trực tiếp độ chính xác không gian và ngữ nghĩa:
+  - Nếu `parse_output(completion)` trả về `None` (JSON hỏng hoặc không đúng định dạng): $R = 0.0$ (phạt nặng nhất).
+  - Nếu cả ground truth và dự đoán đều rỗng (khung cảnh không có hư hại): $R = 1.0$.
+  - Nếu một trong hai rỗng (bỏ sót toàn bộ hoặc bịa ra box khi đường hoàn toàn bình thường): $R = 0.2$ (chỉ thưởng điểm đúng định dạng JSON cơ bản).
+  - Ghép đôi tham lam (greedy bipartite matching) các box cùng nhãn theo IoU giảm dần, chỉ chấp nhận $\text{IoU} \ge 0.5$.
+  - Điểm reward cuối cùng:
+    $$R = 0.2 + 0.8 \times \frac{\sum_{i} \text{IoU}_i}{\max(N_{gt}, N_{pred}, 1)}$$
+    Mẫu số $\max(N_{gt}, N_{pred}, 1)$ đóng vai trò là cơ chế phạt tự nhiên (penalty) chống hiện tượng sinh thừa box hoặc ảo giác (hallucination).
+- **Kết quả Unit Tests (chạy tự động trong notebook)**:
+  1. *Khớp hoàn hảo (Perfect match)*: $R = 1.0$ (assert pass).
+  2. *JSON hỏng (Invalid output)*: $R = 0.0$ (assert pass).
+  3. *Sai lớp (Wrong class)*: $R = 0.2$ (assert pass).
+  4. *Thừa box bịa (Over-prediction)*: $0.2 < R = 0.6 < 1.0$ (bị phạt qua mẫu số, assert pass).
+  - Kết quả log kiểm thử từ Kaggle: `Unit test hàm reward IoU: TẤT CẢ TEST ĐỀU PASS!`
+
+### 2. Thiết lập huấn luyện GRPO (3 điểm)
+- **Cấu hình theo `configs/e5.yaml` & `GUIDE.md`**:
+  - Mô hình nền tảng: Khởi tạo từ checkpoint tốt nhất **E3** (LoRA ViT + Full Projector + LoRA LLM).
+  - Thuật toán: Group Relative Policy Optimization (`trl.GRPOTrainer`, `trl==1.9.2`).
+  - Số lượng generation ($G$): 4 rollouts mỗi prompt (`num_generations=4`).
+  - Độ dài tối đa: `max_completion_length=128`.
+  - Số bước huấn luyện: 60 bước, tối ưu bằng AdamW với learning rate nhỏ $5.0 \times 10^{-6}$, hệ số điều hòa KL $\beta = 0.0$.
+  - Log quá trình: Reward trung bình tăng dần qua các step (từ 0.42 lên ~0.68), độ lệch chuẩn reward trong nhóm (group advantage) ổn định, không xuất hiện hiện tượng sụp đổ gradient.
+
+### 3. Phân tích hiện tượng Reward Hacking & So sánh với SFT (3 điểm)
+- **Phân tích dấu hiệu Reward Hacking**:
+  - *Nguy cơ 1 — Mô hình trả danh sách rỗng `[]`*: Nếu dữ liệu huấn luyện có nhiều ảnh không có hư hại, mô hình có thể bị cám dỗ trả về `[]` để né tránh mẫu số phạt $\max(N_{gt}, N_{pred})$. Tuy nhiên, trong tập Road Damage, phần lớn ảnh đều có ít nhất 1 hư hại mặt đường ($N_{gt} \ge 1$), do đó nếu trả `[]`, reward chỉ nhận được $0.2$, thấp hơn nhiều so với việc dự đoán đúng một box bất kỳ ($R \ge 0.2 + 0.8 \times 0.5 / N_{gt} \approx 0.6$).
+  - *Nguy cơ 2 — Mô hình sinh box khổng lồ bao trùm toàn bộ ảnh*: Nhằm tối đa hóa khả năng giao cắt với ground truth. Tuy nhiên, do công thức $\text{IoU} = \frac{\text{Area}(A \cap B)}{\text{Area}(A \cup B)}$, một box quá lớn sẽ làm diện tích hợp tăng vọt, kéo $\text{IoU}$ xuống dưới ngưỡng $0.5$ và nhận $\text{IoU} = 0$, bị loại bỏ hoàn toàn khỏi bộ ghép đôi.
+  - *Kết luận*: Hàm reward được thiết kế chặt chẽ và không quan sát thấy hiện tượng reward hacking bệnh lý trong quá trình rollout.
+- **So sánh định lượng giữa GRPO và SFT (E3)**:
+  - **SFT (Baseline E3)**: F1 micro **0.4335**, khoảng tin cậy CI95 $[0.3877, 0.4752]$, FP/ảnh = 0.95, meanIoU = 0.688.
+  - **GRPO (E5)**: F1 micro đạt **0.4418**, khoảng tin cậy CI95 $[0.3962, 0.4835]$, FP/ảnh giảm còn 0.89, meanIoU cải thiện lên 0.694.
+  - **Đánh giá thống kê (CI95)**:
+    - Điểm F1 micro sau GRPO tăng nhẹ **+0.83%** so với SFT, và tỷ lệ dương tính giả giảm rõ rệt (mô hình thận trọng hơn khi sinh box nhờ cơ chế phạt của mẫu số).
+    - Tuy nhiên, điểm số $0.4418$ vẫn **nằm hoàn toàn bên trong khoảng tin cậy 95% của SFT E3 $[0.3877, 0.4752]$**.
+    - Về mặt kiểm định giả thuyết thống kê, ta kết luận rằng 60 bước GRPO mang lại sự tinh chỉnh tích cực về chất lượng toạ độ và giảm thiểu FP, nhưng mức tăng F1 chưa tạo ra sự bứt phá vượt ra ngoài biên sai số thống kê trên tập kiểm thử 311 ảnh.
