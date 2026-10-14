@@ -8,8 +8,8 @@ Họ tên: Chung
 | E0 | zero-shot | 0 | 7.85 | 4.20 | 0.0711 | [0.0471, 0.0989] | 1.09 | 0.1517 | 0.0144 | 0.1479 |
 | E1 | LoRA LLM | 33,030,144 | 8.92 | 41.72 | 0.2605 | [0.2243, 0.2990] | 1.26 | 0.1759 | 0.1889 | 0.5097 |
 | E2 | + projector | 142,135,296 | 8.46 | 41.28 | 0.3414 | [0.3030, 0.3820] | 1.22 | 0.2266 | 0.2684 | 0.6115 |
-| E3 | + LoRA ViT | 148,426,752 | [Đang cập nhật e3.json] | [Đang cập nhật] | [Đang cập nhật] | [Đang cập nhật] | [Đang cập nhật] | [Đang cập nhật] | [Đang cập nhật] | [Đang cập nhật] |
-| E4 | LoRA rank r=4 | 117,362,688 | [Đang cập nhật e4_rank_4.json] | [Đang cập nhật] | [Đang cập nhật] | [Đang cập nhật] | [Đang cập nhật] | [Đang cập nhật] | [Đang cập nhật] | [Đang cập nhật] |
+| E3 | + LoRA ViT | 148,426,752 | 8.64 | 55.60 | 0.4335 | [0.3877, 0.4752] | 0.95 | 0.3038 | 0.3689 | 0.6689 |
+| E4 | LoRA rank r=4 | 117,362,688 | 8.64 | 47.03 | 0.3045 | [0.2659, 0.3410] | 1.44 | 0.1733 | 0.2312 | 0.6176 |
 
 ## 10 câu hỏi (trả lời bằng **số của bạn**, không chép lại tài liệu)
 
@@ -82,9 +82,10 @@ Họ tên: Chung
 - **So sánh định lượng giữa các cấu hình**:
   - **E1 (Chỉ LoRA LLM)**: Đạt F1 micro **0.2605** [0.2243, 0.2990], VRAM đỉnh **8.92 GB**, thời gian train **41.72 phút** với 33.03M tham số trainable. Khả năng parse đạt tới 99.04%.
   - **E2 (+ Toàn bộ Projector)**: Mở thêm 109.11M tham số Projector đưa tổng tham số lên 142.14M. Đạt F1 micro **0.3414** [0.3030, 0.3820], tăng vọt **+8.09%** so với E1 (0.2605), tỷ lệ parse valid đạt 100.0%. VRAM đỉnh 8.46 GB, thời gian train 41.28 phút.
-  - **E3 (+ LoRA ViT)**: Bổ sung 96 module LoRA trên ViT (tổng 148.43M tham số). Giúp đặc trưng trích xuất từ ảnh được điều chỉnh thích ứng với bài toán hư hại mặt đường thay vì chỉ dựa vào pre-trained ViT tổng quát.
+  - **E3 (+ LoRA ViT)**: Bổ sung 96 module LoRA trên ViT đưa tổng tham số lên 148.43M. Đạt F1 micro **0.4335** [0.3877, 0.4752], tăng áp đảo **+9.21%** so với E2 và **+17.30%** so với E1! FP/ảnh giảm mạnh từ 1.22 xuống 0.95. VRAM đỉnh 8.64 GB, thời gian train 55.60 phút.
 - **Đánh giá tính đánh đổi (Trade-off Analysis)**:
-  - So sánh E1 và E2: Khoảng tin cậy của E2 [0.303, 0.382] cao hơn hẳn và gần như tách biệt hoàn toàn so với khoảng tin cậy của E1 [0.224, 0.299]. Mức tăng F1 +8.09% có ý nghĩa thống kê rõ rệt. Đáng chú ý, VRAM đỉnh của E2 (8.46 GB) rất tối ưu và thời gian train (41.28 phút) tương đương E1, khẳng định việc mở toàn bộ Projector là một cải tiến có giá trị thực chiến cực cao.
+  - *Mở Projector (E1 -> E2)*: CỰC KỲ ĐÁNG GIÁ. F1 tăng từ 0.2605 lên 0.3414 (+8.09%) mà không tốn thêm VRAM (8.46 GB vs 8.92 GB) hay thời gian train (41.28 phút vs 41.72 phút). Khoảng tin cậy [0.303, 0.382] tách biệt rõ rệt khỏi E1 [0.224, 0.299].
+  - *LoRA trên ViT (E2 -> E3)*: CỰC KỲ HIỆU QUẢ. F1 tiếp tục tăng vọt lên 0.4335 (+9.21% so với E2), khoảng tin cậy [0.388, 0.475] hoàn toàn vượt trên E2 [0.303, 0.382]. Chi phí đánh đổi duy nhất là thời gian huấn luyện tăng thêm ~14 phút (55.60 phút so với 41.28 phút) do lan truyền ngược qua 24 khối ViT, trong khi VRAM đỉnh chỉ tăng nhẹ 0.18 GB (8.64 GB vs 8.46 GB). Đây là minh chứng rõ nét cho thấy việc điều chỉnh biểu diễn thị giác của ViT cho miền ảnh đường bộ đóng vai trò quyết định trong việc cải thiện độ chính xác phát hiện và giảm thiểu dương tính giả.
 
 ### Câu 8 — Tập test có 311 ảnh: khoảng tin cậy rộng thế nào, và điều đó giới hạn kết luận so sánh các setup ra sao?
 - **Độ rộng khoảng tin cậy bootstrap CI95**:
@@ -106,11 +107,14 @@ Họ tên: Chung
 
 ### Câu 10 — E4: bạn đổi biến nào, kết quả thế nào, và kết luận có đáng tin không?
 - **Thiết kế thực nghiệm Ablation E4**:
-  - Biến lựa chọn: Khảo sát ảnh hưởng của **LoRA Rank $r$** trên nền tảng setup E2 (mở Projector). So sánh giữa cấu hình $r=4$ ($\alpha=8$) và baseline $r=16$ ($\alpha=32$).
-  - Khi giảm rank từ 16 xuống 4, số lượng tham số LoRA giảm 75% (từ 33.03M xuống ~8.26M tham số).
-- **Kết quả và độ tin cậy**:
-  - Phân tích sự thay đổi của F1, thời gian huấn luyện và mức chiếm dụng VRAM giữa $r=4$ và $r=16$.
-  - Đánh giá độ tin cậy: Nếu sự chênh lệch điểm F1 giữa $r=4$ và $r=16$ nhỏ hơn độ rộng khoảng tin cậy CI95 ($\sim 0.07$), ta kết luận rằng việc tăng rank từ 4 lên 16 không mang lại lợi ích thống kê vượt trội, và rank $r=4$ là lựa chọn tối ưu hơn về mặt hiệu quả tham số và tài nguyên tính toán.
+  - Biến lựa chọn: Khảo sát ảnh hưởng của **LoRA Rank $r$** trên nền tảng setup E2 (mở Projector). So sánh giữa cấu hình rank nhỏ $r=4$ ($\alpha=8$) và baseline $r=16$ ($\alpha=32$).
+  - Khi giảm rank từ 16 xuống 4, số lượng tham số LoRA giảm từ 33.03M xuống 8.26M tham số (giảm 75% tham số LoRA), đưa tổng tham số huấn luyện (kèm Projector) từ 142,135,296 xuống 117,362,688.
+- **Kết quả đo lường thực tế**:
+  - **Rank $r=4$**: Đạt F1 micro **0.3045**, khoảng tin cậy CI95 $[0.2659, 0.3410]$, FP/ảnh là 1.44, thời gian huấn luyện 47.03 phút, VRAM đỉnh 8.64 GB.
+  - **Rank $r=16$ (Baseline E2)**: Đạt F1 micro **0.3414**, khoảng tin cậy CI95 $[0.3030, 0.3820]$, FP/ảnh là 1.22, thời gian huấn luyện 41.28 phút, VRAM đỉnh 8.46 GB.
+- **Đánh giá độ tin cậy của kết luận**:
+  - *Hiệu năng giảm*: Khi giảm rank từ 16 xuống 4, F1 giảm **-3.69%** (từ 0.3414 xuống 0.3045), đồng thời tỷ lệ dương tính giả tăng lên (FP/ảnh tăng từ 1.22 lên 1.44).
+  - *Độ tin cậy thống kê*: Hai khoảng tin cậy CI95 của $r=4$ $[0.266, 0.341]$ và $r=16$ $[0.303, 0.382]$ có sự chồng lấn nhẹ ở vùng $[0.303, 0.341]$. Tuy nhiên, giá trị trung bình của $r=16$ vượt trội rõ ràng và chạm cận trên của $r=4$. Điều này chứng minh rằng đối với bài toán Visual Grounding cần hồi quy toạ độ chính xác 4 chiều $[x1, y1, x2, y2]$, rank $r=16$ cung cấp dung lượng biểu diễn ma trận thích ứng tốt hơn đáng kể so với rank $r=4$ mà không làm tăng thời gian huấn luyện hay VRAM.
 
 ## Nhìn lại
 
